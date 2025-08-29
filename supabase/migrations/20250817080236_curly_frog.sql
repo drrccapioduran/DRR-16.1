@@ -25,7 +25,7 @@
     - Add policy for authenticated users to manage all videos
 */
 
--- Create videos table
+-- Create videos tapublic.your_tablepublic.your_tableble
 CREATE TABLE IF NOT EXISTS videos (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
