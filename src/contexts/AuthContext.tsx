@@ -80,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const setUserFromSession = async (supabaseUser: SupabaseUser) => {
     try {
-      // Get user profile from database or use metadata
+      // Get user profile from users table
       const { data: userProfile, error } = await supabase
         .from('users')
         .select('*')
@@ -90,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let userData: User;
 
       if (userProfile && !error) {
-        // User exists in our users table
+        // User exists in users table
         userData = {
           id: supabaseUser.id,
           email: supabaseUser.email!,
@@ -99,7 +99,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           user_metadata: supabaseUser.user_metadata
         };
       } else {
-        // Use Supabase user metadata or defaults
+        // Create user profile in users table if it doesn't exist
+        try {
+          const { data: newUserProfile, error: createError } = await supabase
+            .from('users')
+            .insert([{
+              id: supabaseUser.id,
+              username: supabaseUser.email!.split('@')[0],
+              email: supabaseUser.email!,
+              name: supabaseUser.user_metadata?.name || supabaseUser.email!,
+              role: 'editor',
+              status: 'active',
+              password_hash: 'managed_by_supabase_auth'
+            }])
+            .select()
+            .single();
+
+          if (!createError && newUserProfile) {
+            userData = {
+              id: supabaseUser.id,
+              email: supabaseUser.email!,
+              role: newUserProfile.role,
+              name: newUserProfile.name,
+              user_metadata: supabaseUser.user_metadata
+            };
+          } else {
+            // Fallback to metadata if database creation fails
+            userData = {
+              id: supabaseUser.id,
+              email: supabaseUser.email!,
+              role: supabaseUser.user_metadata?.role || 'editor',
+              name: supabaseUser.user_metadata?.name || supabaseUser.email!,
+              user_metadata: supabaseUser.user_metadata
+            };
+          }
+        } catch (createError) {
+          // Fallback to metadata
         userData = {
           id: supabaseUser.id,
           email: supabaseUser.email!,
@@ -107,17 +142,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: supabaseUser.user_metadata?.name || supabaseUser.email!,
           user_metadata: supabaseUser.user_metadata
         };
+        }
       }
 
       setUser(userData);
       setIsAuthenticated(true);
 
-      // Update last login in database if user exists
+      // Update last login in users table if user exists
       if (userProfile && !error) {
         await supabase
           .from('users')
           .update({ last_login: new Date().toISOString() })
-          .eq('id', userProfile.id);
+          .eq('id', supabaseUser.id);
       }
     } catch (error) {
       console.error('Error setting user from session:', error);

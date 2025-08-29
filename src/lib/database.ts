@@ -383,16 +383,52 @@ export class DatabaseManager {
   }
 
   async createUser(user: Omit<UserRow, 'id' | 'created_at' | 'updated_at'> & { password?: string }): Promise<UserRow> {
-    // This method is deprecated for production use
-    // Users should be created through the admin panel or direct database operations
-    throw new Error('User creation through this method is not supported in production. Use admin panel instead.');
+    await this.ensureConnection();
+    
+    try {
+      // Create user in Supabase Auth first
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: user.email,
+        password: user.password || 'defaultPassword123'
+      });
+
+      if (authError || !authData.user) {
+        throw new Error('Failed to create authentication account');
+      }
+
+      // Then create user record in users table
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .insert([{
+          id: authData.user.id,
+          username: user.username,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          status: user.status,
+          password_hash: 'managed_by_supabase_auth'
+        }])
+        .select()
+        .single();
+
+      if (userError) {
+        // Clean up auth user if database insert fails
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        throw userError;
+      }
+
+      return userData;
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
+    }
   }
 
   async authenticateUser(email: string, password: string): Promise<UserRow | null> {
     await this.ensureConnection();
     
     try {
-      // First check if user exists in database
+      // First check if user exists in users table
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
@@ -502,8 +538,8 @@ async healthCheck(): Promise<{ status: 'healthy' | 'unhealthy'; message: string 
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     const { error } = await supabase
-      .from('your_table')
-      .select('*')
+      .from('users')
+      .select('count')
       .limit(1)
       .abortSignal(controller.signal);
 

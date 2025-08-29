@@ -146,7 +146,7 @@ const UsersManagement: React.FC = () => {
             return;
           }
 
-          // Then create user record in database
+          // Then create user record in users table
           const { data: userData, error: userError } = await supabase
             .from('users')
             .insert([{
@@ -170,7 +170,6 @@ const UsersManagement: React.FC = () => {
           }
 
           setUsers(prev => [userData, ...prev]);
-          alert('User updated successfully!');
           alert('User created successfully!');
         }
         
@@ -217,7 +216,7 @@ const UsersManagement: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this user? This will also delete their authentication account.')) {
       try {
-        // First delete from users table
+        // Delete from users table
         const { error } = await supabase
           .from('users')
           .delete()
@@ -225,7 +224,7 @@ const UsersManagement: React.FC = () => {
 
         if (error) throw error;
         
-        // Then delete from Supabase Auth (requires service role)
+        // Also try to delete from Supabase Auth
         const { error: authError } = await supabase.auth.admin.deleteUser(id);
         if (authError) {
           console.warn('Could not delete auth user:', authError);
