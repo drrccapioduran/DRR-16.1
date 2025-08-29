@@ -502,7 +502,7 @@ async healthCheck(): Promise<{ status: 'healthy' | 'unhealthy'; message: string 
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     const { error } = await supabase
-      .from('your_table')
+      .from('users')
       .select('*')
       .limit(1)
       .abortSignal(controller.signal);
