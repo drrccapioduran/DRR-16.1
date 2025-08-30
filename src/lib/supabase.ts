@@ -26,31 +26,43 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    flowType: 'pkce'
+    flowType: 'pkce',
+    debug: process.env.NODE_ENV === 'development'
   },
   realtime: {
     params: {
       eventsPerSecond: 10
     },
     heartbeatIntervalMs: 30000,
-    reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 30000)
+    reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 30000),
+    timeout: 10000
   },
   global: {
     headers: {
-      'x-application-name': 'mdrrmo-pio-duran'
+      'x-application-name': 'mdrrmo-pio-duran',
+      'x-client-info': 'mdrrmo-web-app'
     }
   },
   db: {
     schema: 'public'
+  },
+  // Add retry configuration
+  fetch: (url, options = {}) => {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Cache-Control': 'no-cache'
+      }
+    });
   }
-  }
-);
+});
 
 // Connection state management
 let isConnected = false;
 let connectionRetries = 0;
 const maxRetries = 5;
-const retryDelay = 2000;
+const retryDelay = 1000;
 
 // Enhanced connection testing with retry logic
 const testConnection = async (retryCount = 0): Promise<boolean> => {
@@ -60,10 +72,17 @@ const testConnection = async (retryCount = 0): Promise<boolean> => {
       return false;
     }
 
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     const { data, error } = await supabase
       .from('news')
       .select('count')
-      .limit(1);
+      .limit(1)
+      .abortSignal(controller.signal);
+
+    clearTimeout(timeoutId);
 
     if (error) {
       throw error;
@@ -78,7 +97,11 @@ const testConnection = async (retryCount = 0): Promise<boolean> => {
     
     return true;
   } catch (error) {
-    console.error(`❌ Supabase connection failed (attempt ${retryCount + 1}):`, error);
+    if (error.name === 'AbortError') {
+      console.error(`❌ Supabase connection timeout (attempt ${retryCount + 1})`);
+    } else {
+      console.error(`❌ Supabase connection failed (attempt ${retryCount + 1}):`, error);
+    }
     isConnected = false;
     
     // Retry connection with exponential backoff
@@ -106,7 +129,7 @@ testConnection();
 // Monitor connection status
 const monitorConnection = () => {
   setInterval(async () => {
-    if (!isConnected) {
+    if (!isConnected && navigator.onLine) {
       await testConnection();
     }
   }, 30000); // Check every 30 seconds
@@ -119,7 +142,7 @@ setTimeout(monitorConnection, 5000);
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     console.log('🌐 Network connection restored');
-    testConnection();
+    setTimeout(() => testConnection(), 1000); // Delay to ensure network is stable
   });
   
   window.addEventListener('offline', () => {
@@ -131,8 +154,60 @@ if (typeof window !== 'undefined') {
 
 // Export connection utilities
 export const getConnectionStatus = () => isConnected;
-export const forceReconnect = () => testConnection();
+export const forceReconnect = async () => {
+  connectionRetries = 0;
+  return await testConnection();
+};
 export const getRetryCount = () => connectionRetries;
+
+// Health check function
+export const healthCheck = async (): Promise<{ status: 'healthy' | 'unhealthy'; message: string; responseTime?: number }> => {
+  const startTime = performance.now();
+  
+  try {
+    if (!validateEnvironment()) {
+      return { status: 'unhealthy', message: 'Environment variables not configured' };
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const { data, error } = await supabase
+      .from('news')
+      .select('count')
+      .limit(1)
+      .abortSignal(controller.signal);
+
+    clearTimeout(timeoutId);
+    const responseTime = performance.now() - startTime;
+
+    if (error) {
+      throw error;
+    }
+
+    return { 
+      status: 'healthy', 
+      message: 'Database connection successful',
+      responseTime: Math.round(responseTime)
+    };
+  } catch (error) {
+    const responseTime = performance.now() - startTime;
+    
+    if (error.name === 'AbortError') {
+      return { 
+        status: 'unhealthy', 
+        message: 'Connection timeout',
+        responseTime: Math.round(responseTime)
+      };
+    }
+    
+    return { 
+      status: 'unhealthy', 
+      message: error instanceof Error ? error.message : 'Unknown error',
+      responseTime: Math.round(responseTime)
+    };
+  }
+};
 
 // Type aliases for union types
 export type NewsStatus = 'published' | 'draft';
