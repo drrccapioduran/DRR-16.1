@@ -16,10 +16,6 @@ Responsiveness: The design must be fully responsive, providing an excellent user
 
 Backend Requirements:
 
-Technology Stack: The backend should be built using a suitable framework (e.g., Node.js with Express, Next.js API Routes).
-
-Database: A database will be required for persistent data storage. Please choose an appropriate database solution (e.g., a simple file-based database for small projects, or a more robust solution like PostgreSQL or MongoDB for larger applications).
-
 API Design: The backend should expose a RESTful or GraphQL API for the frontend to consume. The API should be well-structured, secure, and documented.
 
 Functionality: The backend must handle all business logic, data persistence, user authentication (if required), and other server-side operations.
